@@ -18,7 +18,7 @@ def validate_url(url: Optional[str]) -> Optional[str]:
     return url
 
 class UserBase(BaseModel):
-    email: EmailStr = Field(..., example="john.doe@example.com")
+    email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
     nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example=generate_nickname())
     first_name: Optional[str] = Field(None, example="John")
     last_name: Optional[str] = Field(None, example="Doe")
@@ -26,7 +26,7 @@ class UserBase(BaseModel):
     profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
     linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
     github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
-    role: UserRole
+    role: Optional[UserRole] = None
 
     _validate_urls = validator('profile_picture_url', 'linkedin_profile_url', 'github_profile_url', pre=True, allow_reuse=True)(validate_url)
  
@@ -38,19 +38,12 @@ class UserCreate(UserBase):
     password: str = Field(..., example="Secure*1234")
 
 class UserUpdate(UserBase):
-    email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
-    nickname: Optional[str] = Field(None, min_length=3, pattern=r'^[\w-]+$', example="john_doe123")
-    first_name: Optional[str] = Field(None, example="John")
-    last_name: Optional[str] = Field(None, example="Doe")
-    bio: Optional[str] = Field(None, example="Experienced software developer specializing in web applications.")
-    profile_picture_url: Optional[str] = Field(None, example="https://example.com/profiles/john.jpg")
-    linkedin_profile_url: Optional[str] =Field(None, example="https://linkedin.com/in/johndoe")
-    github_profile_url: Optional[str] = Field(None, example="https://github.com/johndoe")
-    role: Optional[str] = Field(None, example="AUTHENTICATED")
+    password: Optional[str] = None
 
     @root_validator(pre=True)
     def check_at_least_one_value(cls, values):
-        if not any(values.values()):
+        # Only raise if all values are None or empty
+        if not any(v is not None and v != "" for v in values.values()):
             raise ValueError("At least one field must be provided for update")
         return values
 

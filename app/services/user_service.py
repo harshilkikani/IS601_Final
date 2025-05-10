@@ -199,3 +199,15 @@ class UserService:
             await session.commit()
             return True
         return False
+
+    @classmethod
+    async def upgrade_professional_status(cls, session: AsyncSession, user_id: UUID) -> Optional[User]:
+        user = await cls.get_by_id(session, user_id)
+        if not user:
+            return None
+        user.is_professional = True
+        user.professional_status_updated_at = datetime.now(timezone.utc)
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user

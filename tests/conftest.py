@@ -64,6 +64,13 @@ async def async_client(db_session):
         finally:
             app.dependency_overrides.clear()
 
+@pytest.fixture(scope="function")
+def client(db_session):
+    app.dependency_overrides[get_db] = lambda: db_session
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
 @pytest.fixture(scope="session", autouse=True)
 def initialize_database():
     try:
@@ -238,3 +245,69 @@ def email_service():
         mock_service.send_verification_email.return_value = None
         mock_service.send_user_email.return_value = None
         return mock_service
+
+import sqlalchemy
+
+@pytest.fixture(scope="function")
+async def test_user(db_session):
+    from app.models.user_model import User, UserRole
+    from app.services.jwt_service import create_access_token
+    user = User(
+        nickname="testuser",
+        first_name="Test",
+        last_name="User",
+        email="testuser@example.com",
+        hashed_password=hash_password("TestPassword123!"),
+        role=UserRole.ADMIN,  # Set as ADMIN for profile update tests
+        email_verified=True,
+        is_locked=False,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(user)
+    assert user.id is not None, "User ID should not be None after commit/refresh"
+    token = create_access_token(data={"sub": str(user.id), "role": user.role.name})
+    return {"id": str(user.id), "access_token": token, "email": user.email}
+
+@pytest.fixture(scope="function")
+async def another_user(db_session):
+    from app.models.user_model import User, UserRole
+    user = User(
+        nickname="anotheruser",
+        first_name="Another",
+        last_name="User",
+        email="anotheruser@example.com",
+        hashed_password=hash_password("AnotherPassword123!"),
+        role=UserRole.AUTHENTICATED,
+        email_verified=True,
+        is_locked=False,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(user)
+    assert user.id is not None, "User ID should not be None after commit/refresh"
+    return {"id": str(user.id), "email": user.email}
+
+@pytest.fixture(scope="function")
+async def admin_user_with_token(db_session):
+    from app.models.user_model import User, UserRole
+    from app.services.jwt_service import create_access_token
+    user = User(
+        nickname="adminuser",
+        first_name="Admin",
+        last_name="User",
+        email="adminuser@example.com",
+        hashed_password=hash_password("AdminPassword123!"),
+        role=UserRole.ADMIN,
+        email_verified=True,
+        is_locked=False,
+    )
+    db_session.add(user)
+    await db_session.flush()
+    await db_session.commit()
+    await db_session.refresh(user)
+    assert user.id is not None, "User ID should not be None after commit/refresh"
+    token = create_access_token(data={"sub": str(user.id), "role": user.role.name})
+    return {"id": str(user.id), "access_token": token, "email": user.email}

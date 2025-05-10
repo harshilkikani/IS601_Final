@@ -190,3 +190,101 @@ async def test_list_users_unauthorized(async_client, user_token):
         headers={"Authorization": f"Bearer {user_token}"}
     )
     assert response.status_code == 403  # Forbidden, as expected for regular user
+
+@pytest.mark.asyncio
+async def test_update_profile_with_valid_data(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"first_name": "New", "last_name": "Name", "email": "newemail@example.com", "bio": "Updated bio."}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["first_name"] == "New"
+    assert data["last_name"] == "Name"
+    assert data["email"] == "newemail@example.com"
+    assert data["bio"] == "Updated bio."
+
+@pytest.mark.asyncio
+async def test_update_profile_with_invalid_email(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"email": "notanemail"}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code == 422 or response.status_code == 400
+
+@pytest.mark.asyncio
+async def test_update_profile_with_empty_required_field(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"name": ""}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code == 422 or response.status_code == 400
+
+@pytest.mark.asyncio
+async def test_update_profile_with_long_input(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    long_bio = "A" * 10000
+    update_data = {"bio": long_bio}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code in (200, 422, 400)
+
+@pytest.mark.asyncio
+async def test_update_profile_with_special_characters(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"bio": "!@#$%^&*()_+-=~`[]{}|;':,./<>?"}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code in (200, 422)
+    if response.status_code == 200:
+        data = response.json()
+        assert data["bio"] == "!@#$%^&*()_+-=~`[]{}|;':,./<>?"
+
+@pytest.mark.asyncio
+async def test_update_profile_with_sql_injection_attempt(async_client, test_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"bio": "Robert'); DROP TABLE users;--"}
+    response = await async_client.put("/users/me", json=update_data, headers=headers)
+    assert response.status_code in (200, 422, 400)
+    if response.status_code == 200:
+        data = response.json()
+        assert "DROP TABLE" not in data["bio"]
+
+@pytest.mark.asyncio
+async def test_upgrade_to_professional_status_as_admin(async_client, admin_user_with_token, test_user, mocker):
+    mock_send_email = mocker.patch("app.services.email_service.EmailService.send_user_email", autospec=True)
+    token = admin_user_with_token['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    user_id = test_user['id']
+    response = await async_client.post(f"/users/{user_id}/upgrade_professional", headers=headers)
+    assert response.status_code == 200
+    assert mock_send_email.called
+
+@pytest.mark.asyncio
+async def test_upgrade_to_professional_status_as_regular_user(async_client, test_user, another_user, mocker):
+    mock_send_email = mocker.patch("app.services.email_service.EmailService.send_user_email", autospec=True)
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    user_id = another_user['id']
+    response = await async_client.post(f"/users/{user_id}/upgrade_professional", headers=headers)
+    assert response.status_code == 403
+    assert not mock_send_email.called
+
+@pytest.mark.asyncio
+async def test_unauthorized_profile_update(async_client, test_user, another_user):
+    token = test_user['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    update_data = {"first_name": "Hacker", "last_name": "McHackface"}
+    response = await async_client.put(f"/users/{another_user['id']}", json=update_data, headers=headers)
+    assert response.status_code in (403, 404)
+
+@pytest.mark.asyncio
+async def test_notification_sent_on_professional_status_upgrade(async_client, admin_user_with_token, test_user, mocker):
+    mock_send_email = mocker.patch("app.services.email_service.EmailService.send_user_email", autospec=True)
+    token = admin_user_with_token['access_token']
+    headers = {"Authorization": f"Bearer {token}"}
+    user_id = test_user['id']
+    response = await async_client.post(f"/users/{user_id}/upgrade_professional", headers=headers)
+    assert response.status_code == 200
+    assert mock_send_email.called

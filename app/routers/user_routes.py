@@ -33,6 +33,7 @@ from app.services.jwt_service import create_access_token
 from app.utils.link_generation import create_user_links, generate_pagination_links
 from app.dependencies import get_settings
 from app.services.email_service import EmailService
+from app.models.user_model import UserRole
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 settings = get_settings()
@@ -79,13 +80,17 @@ async def get_user(user_id: UUID, request: Request, db: AsyncSession = Depends(g
 # experience by adhering to REST principles and providing self-discoverable operations.
 
 @router.put("/users/{user_id}", response_model=UserResponse, name="update_user", tags=["User Management Requires (Admin or Manager Roles)"])
-async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
+async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(get_current_user)):
     """
-    Update user information.
-
-    - **user_id**: UUID of the user to update.
-    - **user_update**: UserUpdate model with updated user information.
+    Update user information. Only admin/manager or the user themselves can update.
     """
+    # Only allow if admin/manager or updating own profile
+    role = current_user.get("role") if isinstance(current_user, dict) else getattr(current_user, "role", None)
+    if hasattr(role, "value"):
+        role = role.value
+    user_id_current = current_user.get("id") if isinstance(current_user, dict) else getattr(current_user, "id", None)
+    if not (role in ("ADMIN", "MANAGER") or (str(user_id) == str(user_id_current))):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this user.")
     user_data = user_update.model_dump(exclude_unset=True)
     updated_user = await UserService.update(db, user_id, user_data)
     if not updated_user:
@@ -245,3 +250,90 @@ async def verify_email(user_id: UUID, token: str, db: AsyncSession = Depends(get
     if await UserService.verify_email_with_token(db, user_id, token):
         return {"message": "Email verified successfully"}
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
+
+@router.post("/users/{user_id}/upgrade_professional", response_model=UserResponse, name="upgrade_professional", tags=["User Management Requires (Admin or Manager Roles)"])
+async def upgrade_professional(user_id: UUID, request: Request, db: AsyncSession = Depends(get_db), email_service: EmailService = Depends(get_email_service), token: str = Depends(oauth2_scheme), current_user: dict = Depends(get_current_user)):
+    """
+    Upgrade a user to professional status. Only ADMIN or MANAGER can perform this action.
+    Sends a notification email to the user upon upgrade.
+    """
+    # RBAC: Only ADMIN or MANAGER
+    role = current_user.get("role") if isinstance(current_user, dict) else getattr(current_user, "role", None)
+    if hasattr(role, "value"):
+        role = role.value
+    if role not in ("ADMIN", "MANAGER"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to upgrade professional status.")
+    user = await UserService.get_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.is_professional:
+        return UserResponse.model_construct(
+            id=user.id,
+            nickname=user.nickname,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            bio=user.bio,
+            profile_picture_url=user.profile_picture_url,
+            github_profile_url=user.github_profile_url,
+            linkedin_profile_url=user.linkedin_profile_url,
+            role=user.role,
+            email=user.email,
+            last_login_at=user.last_login_at,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+            links=create_user_links(user.id, request)
+        )
+    upgraded_user = await UserService.upgrade_professional_status(db, user_id)
+    if not upgraded_user:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to upgrade professional status")
+    # Send notification email
+    user_data = {
+        "name": upgraded_user.first_name or upgraded_user.nickname,
+        "email": upgraded_user.email
+    }
+    await email_service.send_user_email(user_data, "professional_upgrade")
+    return UserResponse.model_construct(
+        id=upgraded_user.id,
+        nickname=upgraded_user.nickname,
+        first_name=upgraded_user.first_name,
+        last_name=upgraded_user.last_name,
+        bio=upgraded_user.bio,
+        profile_picture_url=upgraded_user.profile_picture_url,
+        github_profile_url=upgraded_user.github_profile_url,
+        linkedin_profile_url=upgraded_user.linkedin_profile_url,
+        role=upgraded_user.role,
+        email=upgraded_user.email,
+        last_login_at=upgraded_user.last_login_at,
+        created_at=upgraded_user.created_at,
+        updated_at=upgraded_user.updated_at,
+        links=create_user_links(upgraded_user.id, request)
+    )
+
+@router.put("/users/me", response_model=UserResponse, name="update_own_profile", tags=["User Profile"])
+async def update_own_profile(user_update: UserUpdate, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(get_current_user)):
+    """
+    Allow authenticated users to update their own profile fields.
+    """
+    user_id = current_user['id'] if isinstance(current_user, dict) else getattr(current_user, 'id', None)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    user_data = user_update.model_dump(exclude_unset=True)
+    updated_user = await UserService.update(db, user_id, user_data)
+    if not updated_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return UserResponse.model_construct(
+        id=updated_user.id,
+        bio=updated_user.bio,
+        first_name=updated_user.first_name,
+        last_name=updated_user.last_name,
+        nickname=updated_user.nickname,
+        email=updated_user.email,
+        role=updated_user.role,
+        last_login_at=updated_user.last_login_at,
+        profile_picture_url=updated_user.profile_picture_url,
+        github_profile_url=updated_user.github_profile_url,
+        linkedin_profile_url=updated_user.linkedin_profile_url,
+        created_at=updated_user.created_at,
+        updated_at=updated_user.updated_at,
+        links=create_user_links(updated_user.id, request)
+    )
