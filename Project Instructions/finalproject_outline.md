@@ -36,6 +36,11 @@ NOTE: requirements.txt installation is still failing. The agent must carefully r
 # (SELECTED: User Profile Management - allow users to update profile fields, managers/admins can upgrade users to professional status.)
 - **Quality Assurance (QA):**
 # (COMPLETED: 5 QA issues created and linked in GitHub.)
+- [ ] Issue 1: Profile Update Fails with Invalid Email Format
+- [ ] Issue 2: Profile Update Allows Empty Required Fields
+- [ ] Issue 3: Professional Status Upgrade Not Reflected in UI
+- [ ] Issue 4: No Notification Sent on Professional Status Upgrade
+- [ ] Issue 5: Profile Update Endpoint Allows Unauthorized Access
 - **Test Coverage:**
 # (COMPLETED: 10 new tests for User Profile Management added to test_api/test_users_api.py.)
 - **Feature Implementation:**

@@ -197,6 +197,7 @@ async def test_update_profile_with_valid_data(async_client, test_user):
     headers = {"Authorization": f"Bearer {token}"}
     update_data = {"first_name": "New", "last_name": "Name", "email": "newemail@example.com", "bio": "Updated bio."}
     response = await async_client.put("/users/me", json=update_data, headers=headers)
+    print(f"[TEST DEBUG] status_code={response.status_code}, response_body={response.text}")
     assert response.status_code == 200
     data = response.json()
     assert data["first_name"] == "New"
