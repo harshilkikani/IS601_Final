@@ -263,11 +263,17 @@ async def test_upgrade_to_professional_status_as_admin(async_client, admin_user_
     assert mock_send_email.called
 
 @pytest.mark.asyncio
-async def test_upgrade_to_professional_status_as_regular_user(async_client, test_user, another_user, mocker):
-    mock_send_email = mocker.patch("app.services.email_service.EmailService.send_user_email", autospec=True)
-    token = test_user['access_token']
-    headers = {"Authorization": f"Bearer {token}"}
+async def test_upgrade_to_professional_status_as_regular_user(async_client, another_user, mocker):
+    """
+    This test now uses a REGULAR user (not ADMIN) to ensure RBAC is enforced.
+    """
+    from app.models.user_model import UserRole
+    # Create a regular user and get token
+    from app.services.jwt_service import create_access_token
     user_id = another_user['id']
+    token = create_access_token(data={"sub": user_id, "role": UserRole.AUTHENTICATED.name})
+    headers = {"Authorization": f"Bearer {token}"}
+    mock_send_email = mocker.patch("app.services.email_service.EmailService.send_user_email", autospec=True)
     response = await async_client.post(f"/users/{user_id}/upgrade_professional", headers=headers)
     assert response.status_code == 403
     assert not mock_send_email.called

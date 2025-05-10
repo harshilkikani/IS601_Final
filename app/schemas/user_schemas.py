@@ -47,6 +47,15 @@ class UserUpdate(UserBase):
             raise ValueError("At least one field must be provided for update")
         return values
 
+    @validator('bio')
+    def bio_must_not_contain_sql_keywords(cls, v):
+        if v is not None:
+            forbidden = ["DROP TABLE", "DELETE FROM", "INSERT INTO", "UPDATE ", "--", ";--", "'--"]
+            for keyword in forbidden:
+                if keyword.lower() in v.lower():
+                    raise ValueError("Bio contains forbidden SQL keywords or patterns.")
+        return v
+
 class UserResponse(UserBase):
     id: uuid.UUID = Field(..., example=uuid.uuid4())
     email: EmailStr = Field(..., example="john.doe@example.com")
