@@ -33,11 +33,6 @@ docker exec <fastapi_container_name> pytest
   ```
 - [View on DockerHub](https://hub.docker.com/r/hk453/is601_final)
 
-## Documentation
-- [Test and Feature Links](Project%20Instructions/test_and_feature_links.md)
-- [DockerHub Overview](Project%20Instructions/dockerhub_overview.md)
-- [System Documentation](system_documentation.md)
-
 ## Repository Structure
 - `app/` - FastAPI application code
 - `tests/` - Test suite (pytest)
